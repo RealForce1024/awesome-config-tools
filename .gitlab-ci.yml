@@ -10,6 +10,7 @@ before_script:
 variables:
   MAVEN_OPTS: "-Dmaven.repo.local=.m2/repository -Dorg.slf4j.simpleLogger.log.org.apache.maven.cli.transfer.Slf4jMavenTransferListener=WARN -Dorg.slf4j.simpleLogger.showDateTime=true -Djava.awt.headless=true"
   MAVEN_CLI_OPTS: "--batch-mode --errors --fail-at-end --show-version -DinstallAtEnd=true -DdeployAtEnd=true"
+  SONAR_URL: "http://10.100.35.41:9000"
 
 cache:
   paths:
@@ -38,12 +39,67 @@ verify:
 #  script:
 #    - ./gradlew test
     
-sonar:
-  image: elct9620/gitlab-sonar-scanner
-  script:
-    - "/bin/true"
+# sonar:
+#   image: elct9620/gitlab-sonar-scanner
+#   script:
+#     - "/bin/true"
 
-package:
+# package:
+#   script:
+#     - mvn clean install
+
+
+
+sonarqube_preview:
   script:
-    - mvn clean install
+    - git checkout origin/master
+    - git merge $CI_BUILD_REF --no-commit --no-ff
+    - mvn --batch-mode verify sonar:sonar -Dsonar.host.url=$SONAR_URL -Dsonar.login=admin -Dsonar.password=admin -Dsonar.analysis.mode=preview -Dsonar.gitlab.project_id=$CI_PROJECT_PATH -Dsonar.gitlab.commit_sha=$CI_BUILD_REF -Dsonar.gitlab.ref_name=$CI_BUILD_REF_NAME
+  stage: test
+  except:
+    - develop
+    - master
+    - /^hotfix_.*$/
+    - /.*-hotfix$/
+#   tags:
+#     - java
+
+sonarqube:
+  script:
+    - mvn --batch-mode verify sonar:sonar -Dsonar.host.url=$SONAR_URL -Dsonar.login=admin -Dsonar.password=admin
+  stage: test
+  only:
+    - master
+#   tags:
+#     - java
+
+
+sonar_preview:
+  stage: test
+  script:
+    - ci/sonar_preview.sh
+  except:
+    - master
+#   tags:
+#     - hwy
+
+auto_test:
+  stage: test
+  script: 
+    - ci/auto_test.sh
+  except:
+    - master
+#   tags:
+#     - hwy
+
+sonar_analyze:
+  stage: test
+  script:
+    #- ci/sonar_analyze.sh
+    - mvn --batch-mode sonar:sonar -Dsonar.host.url="http://10.100.35.41:9000" -Dsonar.login=admin -Dsonar.password=admin -Dsonar.issuesReport.html.enable=true -Dsonar.analysis.mode=preview -Dsonar.preview.excludePlugins=issueassign,scmstats
+  only:
+    - master
+#   tags:
+#     - hwy
+ 
  
