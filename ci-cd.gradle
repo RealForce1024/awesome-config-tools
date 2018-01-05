@@ -1,0 +1,46 @@
+node {
+    stage "Checkout"
+    git url: "http://gitlab/root/hello.git"
+    
+    stage "CheckStyle"
+    sh "gradle check --stacktrace"
+    archiveCheckstyleResults()
+    
+	
+    stage "Build/Analyse/Test"
+    sh "git log --format='%H' -n 1 >  src/main/resources/VERSION"
+    sh "date >> src/main/resources/VERSION"
+    sh "gradle clean build --stacktrace"
+    archiveUnitTestResults()
+    
+    stage "Generate Docker image"
+    sh "pwd"
+    sh "cp build/libs/hello-0.0.1-SNAPSHOT.jar src/main/docker"
+    sh "cd src/main/docker && docker build -t leanms/hello:0.1 ."
+    
+    stage name: "Deploy Docker", concurrency: 1
+    sh "docker run -p 9090:8080 -d --network=ci_hello --name hello_app -t leanms/hello:0.1"
+    sleep 20
+    
+    stage name: "Test APP"
+    sh "ping -c 1 hello_app"
+    retry(10) {
+        sh "netcat -vzw1 hello_app 8080" 
+        sh "curl http://hello_app:8080" 
+    }
+    sh "curl http://hello_app:8080/version"
+    sh "docker rm \$(docker stop \$(docker ps -a -q --filter ancestor=leanms/hello:0.1 --format='{{.ID}}'))"
+}
+
+def archiveUnitTestResults() {
+    step([$class: "JUnitResultArchiver", testResults: "build/**/TEST-*.xml"])
+}
+
+def archiveCheckstyleResults() {
+    step([$class: "CheckStylePublisher",
+          canComputeNew: false,
+          defaultEncoding: "",
+          healthy: "",
+          pattern: "build/reports/checkstyle/main.xml",
+          unHealthy: ""])
+}
